@@ -1,7 +1,7 @@
 ## 0.45.2
 
 - Make stream timeout and maximum number of concurrent streams configurable on identify.
-  See []().
+  See [PR 5654](https://github.com/libp2p/rust-libp2p/pull/5654).
 
 ## 0.45.1
 
