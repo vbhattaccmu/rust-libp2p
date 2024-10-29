@@ -41,9 +41,6 @@ use std::collections::HashSet;
 use std::{task::Context, task::Poll, time::Duration};
 use tracing::Level;
 
-const STREAM_TIMEOUT: Duration = Duration::from_secs(60);
-const MAX_CONCURRENT_STREAMS_PER_CONNECTION: usize = 10;
-
 /// Protocol handler for sending and receiving identification requests.
 ///
 /// Outbound requests are sent periodically. The handler performs expects
@@ -124,13 +121,15 @@ impl Handler {
         agent_version: String,
         observed_addr: Multiaddr,
         external_addresses: HashSet<Multiaddr>,
+        stream_timeout: Duration,
+        max_concurrent_streams_per_connection: usize,
     ) -> Self {
         Self {
             remote_peer_id,
             events: SmallVec::new(),
             active_streams: futures_bounded::FuturesSet::new(
-                STREAM_TIMEOUT,
-                MAX_CONCURRENT_STREAMS_PER_CONNECTION,
+                stream_timeout,
+                max_concurrent_streams_per_connection,
             ),
             trigger_next_identify: Delay::new(Duration::ZERO),
             exchanged_one_periodic_identify: false,
