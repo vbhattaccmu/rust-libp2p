@@ -219,8 +219,8 @@ impl Config {
         self
     }
 
-    /// Configures maximum allowed duration for which an active identification request
-    /// stream is allowed to timeout.
+    /// Configures the maximum allowed duration before an active identification
+    /// request stream times out.
     pub fn with_stream_timeout(mut self, t: Duration) -> Self {
         self.stream_timeout = t;
         self
