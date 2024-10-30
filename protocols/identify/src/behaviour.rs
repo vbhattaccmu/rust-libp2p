@@ -373,15 +373,10 @@ impl NetworkBehaviour for Behaviour {
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         Ok(Handler::new(
-            self.config.interval,
+            self.config.clone(),
             peer,
-            self.config.local_public_key.clone(),
-            self.config.protocol_version.clone(),
-            self.config.agent_version.clone(),
             remote_addr.clone(),
             self.all_addresses(),
-            self.config.stream_timeout,
-            self.config.max_concurrent_streams_per_connection,
         ))
     }
 
@@ -407,15 +402,10 @@ impl NetworkBehaviour for Behaviour {
         }
 
         Ok(Handler::new(
-            self.config.interval,
+            self.config.clone(),
             peer,
-            self.config.local_public_key.clone(),
-            self.config.protocol_version.clone(),
-            self.config.agent_version.clone(),
             addr.clone(), // TODO: This is weird? That is the public address we dialed, shouldn't need to tell the other party?
             self.all_addresses(),
-            self.config.stream_timeout,
-            self.config.max_concurrent_streams_per_connection,
         ))
     }
 
