@@ -27,7 +27,10 @@
 //! is used to send messages to remote peers.
 
 use std::{io, marker::PhantomData, time::Duration};
-
+use avail_rust::{
+	kate_recovery::{commitments, matrix::Dimensions},
+	AvailHeader, H256,
+};
 use asynchronous_codec::{Decoder, Encoder, Framed};
 use bytes::BytesMut;
 use futures::prelude::*;
@@ -477,6 +480,9 @@ fn proto_to_req_msg(message: proto::Message) -> Result<KadRequestMsg, io::Error>
                 Err(invalid_data("AddProvider message with no valid peer."))
             }
         }
+        proto::MessageType::VERIFY => {
+            todo!()
+        }
     }
 }
 
@@ -544,6 +550,14 @@ fn proto_to_resp_msg(message: proto::Message) -> Result<KadResponseMsg, io::Erro
                 key,
                 value: rec.value,
             })
+        }
+
+        proto::MessageType::VERIFY => {
+            let (verified, mut unverified) =
+            proof::verify(msg.block_number, msg.dimensions, &msgfetched, msg.commitments, pp)
+                .await
+                .wrap_err("Failed to verify fetched cells")?;
+            todo!()
         }
 
         proto::MessageType::ADD_PROVIDER => {

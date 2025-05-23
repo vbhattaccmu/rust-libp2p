@@ -165,6 +165,7 @@ pub enum MessageType {
     GET_PROVIDERS = 3,
     FIND_NODE = 4,
     PING = 5,
+    VERIFY = 6,
 }
 
 impl Default for MessageType {
@@ -182,6 +183,7 @@ impl From<i32> for MessageType {
             3 => MessageType::GET_PROVIDERS,
             4 => MessageType::FIND_NODE,
             5 => MessageType::PING,
+            6 => MessageType::VERIFY,
             _ => Self::default(),
         }
     }
@@ -196,6 +198,7 @@ impl<'a> From<&'a str> for MessageType {
             "GET_PROVIDERS" => MessageType::GET_PROVIDERS,
             "FIND_NODE" => MessageType::FIND_NODE,
             "PING" => MessageType::PING,
+            "VERIFY" => MessageType::VERIFY,
             _ => Self::default(),
         }
     }
