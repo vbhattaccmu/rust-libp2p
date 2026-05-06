@@ -597,6 +597,7 @@ impl TryInto<fndsa::Keypair> for Keypair {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum PublicKeyInner {
     /// A public Ed25519 key.
     #[cfg(feature = "ed25519")]
