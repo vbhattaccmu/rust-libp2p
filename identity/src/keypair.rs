@@ -29,8 +29,6 @@ use quick_protobuf::{BytesReader, Writer};
 
 #[cfg(feature = "ecdsa")]
 use crate::ecdsa;
-#[cfg(feature = "fndsa")]
-use crate::fndsa;
 #[cfg(any(
     feature = "ecdsa",
     feature = "secp256k1",
@@ -47,6 +45,8 @@ use crate::ed25519;
     feature = "fndsa"
 ))]
 use crate::error::OtherVariantError;
+#[cfg(feature = "fndsa")]
+use crate::fndsa;
 #[cfg(any(
     feature = "ecdsa",
     feature = "secp256k1",
@@ -1039,10 +1039,7 @@ mod tests {
     #[cfg(feature = "fndsa")]
     fn test_publickey_from_fndsa_public_key() {
         let pubkey = Keypair::generate_fndsa().public();
-        let fndsa_pubkey = pubkey
-            .clone()
-            .try_into_fndsa()
-            .expect("An FN-DSA keypair");
+        let fndsa_pubkey = pubkey.clone().try_into_fndsa().expect("An FN-DSA keypair");
         let converted_pubkey = PublicKey::from(fndsa_pubkey);
         assert_eq!(converted_pubkey, pubkey);
         assert_eq!(converted_pubkey.key_type(), KeyType::Fndsa);

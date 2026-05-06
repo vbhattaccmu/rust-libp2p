@@ -82,9 +82,7 @@ impl<T> Output<T> {
     }
 
     #[cfg(feature = "pq")]
-    pub(crate) fn new_pq(
-        io: Framed<T, framed_pq::PqCodec<framed_pq::PqTransportSession>>,
-    ) -> Self {
+    pub(crate) fn new_pq(io: Framed<T, framed_pq::PqCodec<framed_pq::PqTransportSession>>) -> Self {
         Output {
             io: OutputIo::Pq(Box::new(io)),
             recv_buffer: Bytes::new(),

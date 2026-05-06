@@ -62,9 +62,7 @@ impl<S> PqCodec<S> {
 impl PqCodec<PqHandshakeSession> {
     /// Convert a finished handshake session into a transport session and
     /// extract the remote's static ML-KEM-768 pubkey for sig verification.
-    pub(crate) fn into_transport(
-        self,
-    ) -> Result<(Vec<u8>, PqCodec<PqTransportSession>), Error> {
+    pub(crate) fn into_transport(self) -> Result<(Vec<u8>, PqCodec<PqTransportSession>), Error> {
         let remote_static = self
             .session
             .get_remote_static()

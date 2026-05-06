@@ -32,8 +32,7 @@ use crate::protocol::KeypairIdentity;
 // replayed as `/noise/pqxx/1.0.0` authentication.
 pub(crate) const STATIC_KEY_DOMAIN_PQ: &str = "noise-libp2p-static-key-pq:";
 
-pub(crate) type PqKeyPair =
-    ClatterKeyPair<<MlKem768 as Kem>::PubKey, <MlKem768 as Kem>::SecretKey>;
+pub(crate) type PqKeyPair = ClatterKeyPair<<MlKem768 as Kem>::PubKey, <MlKem768 as Kem>::SecretKey>;
 
 #[derive(Clone)]
 pub(crate) struct PqStaticKeypair {
@@ -65,8 +64,7 @@ impl PqStaticKeypair {
         self,
         id_keys: &identity::Keypair,
     ) -> Result<AuthenticPqKeypair, Error> {
-        let sig =
-            id_keys.sign(&[STATIC_KEY_DOMAIN_PQ.as_bytes(), self.public()].concat())?;
+        let sig = id_keys.sign(&[STATIC_KEY_DOMAIN_PQ.as_bytes(), self.public()].concat())?;
 
         let identity = KeypairIdentity {
             public: id_keys.public(),
@@ -123,13 +121,7 @@ mod tests {
         let pq = PqStaticKeypair::new().unwrap();
 
         let classic_sig = id_keys
-            .sign(
-                &[
-                    crate::protocol::STATIC_KEY_DOMAIN.as_bytes(),
-                    pq.public(),
-                ]
-                .concat(),
-            )
+            .sign(&[crate::protocol::STATIC_KEY_DOMAIN.as_bytes(), pq.public()].concat())
             .unwrap();
 
         let result = verify_pq_static_sig(&id_keys.public(), pq.public(), &classic_sig);

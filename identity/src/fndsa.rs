@@ -28,9 +28,9 @@
 use core::fmt;
 
 use fn_dsa::{
-    DOMAIN_NONE, FN_DSA_LOGN_512, HASH_ID_RAW, KeyPairGenerator, KeyPairGeneratorStandard,
-    SigningKey as _, SigningKeyStandard, VerifyingKey as _, VerifyingKeyStandard, sign_key_size,
-    signature_size, vrfy_key_size,
+    sign_key_size, signature_size, vrfy_key_size, KeyPairGenerator, KeyPairGeneratorStandard,
+    SigningKey as _, SigningKeyStandard, VerifyingKey as _, VerifyingKeyStandard, DOMAIN_NONE,
+    FN_DSA_LOGN_512, HASH_ID_RAW,
 };
 use zeroize::Zeroize;
 

@@ -124,9 +124,7 @@ where
 {
     let payload = recv(state).await?;
     if payload.get_size() != 0 {
-        return Err(
-            io::Error::new(io::ErrorKind::InvalidData, "Expected empty payload.").into(),
-        );
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Expected empty payload.").into());
     }
     Ok(())
 }

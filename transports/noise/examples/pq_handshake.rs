@@ -60,10 +60,7 @@ fn main() {
         let mut buf = vec![0u8; greeting.len()];
         bob_session.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, greeting);
-        println!(
-            "Bob decrypted: {}",
-            std::str::from_utf8(&buf).unwrap()
-        );
+        println!("Bob decrypted: {}", std::str::from_utf8(&buf).unwrap());
 
         Ok::<(), Box<dyn std::error::Error>>(())
     });
