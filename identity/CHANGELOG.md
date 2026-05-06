@@ -1,3 +1,11 @@
+## Unreleased
+
+- Add experimental FN-DSA-512 (Falcon-512) post-quantum signatures as a new
+  `KeyType::Fndsa` variant, behind the `fndsa` cargo feature (off by default).
+  New `Keypair::generate_fndsa()` / `try_into_fndsa()`. Protobuf wire id
+  `KeyType::FNDSA = 100`. Backed by the unaudited [`fn-dsa`](https://crates.io/crates/fn-dsa)
+  crate; pre-NIST-final, encodings may change before upstream 1.0.
+
 ## 0.2.13
 
 - Turn the `quick-protobuf` dependency optional to only the features which require it.

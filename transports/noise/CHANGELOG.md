@@ -1,3 +1,10 @@
+## Unreleased
+
+- Add experimental post-quantum Noise variant `Noise_pqXX_MLKEM768_ChaChaPoly_SHA256`
+  behind a new `pq` cargo feature (off by default). Negotiated as `/noise/pqxx/1.0.0`.
+  New: `PqConfig`, `PqOrClassic`, `pq_or_classic(&identity)`. Pulls in the
+  unaudited [`clatter`](https://crates.io/crates/clatter) crate; experimental.
+
 ## 0.47.0
 
 - Raise MSRV to 1.88.0.

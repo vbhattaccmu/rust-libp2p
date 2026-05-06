@@ -39,7 +39,8 @@
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 mod proto {
     include!("generated/mod.rs");
@@ -58,6 +59,9 @@ pub mod rsa;
 #[cfg(feature = "secp256k1")]
 pub mod secp256k1;
 
+#[cfg(feature = "fndsa")]
+pub mod fndsa;
+
 mod error;
 mod keypair;
 #[cfg(feature = "peerid")]
@@ -67,7 +71,8 @@ mod peer_id;
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 impl zeroize::Zeroize for proto::PrivateKey {
     fn zeroize(&mut self) {
@@ -79,7 +84,8 @@ impl zeroize::Zeroize for proto::PrivateKey {
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 impl From<&PublicKey> for proto::PublicKey {
     fn from(key: &PublicKey) -> Self {
@@ -104,6 +110,11 @@ impl From<&PublicKey> for proto::PublicKey {
                 Type: proto::KeyType::ECDSA,
                 Data: key.encode_der(),
             },
+            #[cfg(feature = "fndsa")]
+            keypair::PublicKeyInner::Fndsa(key) => proto::PublicKey {
+                Type: proto::KeyType::FNDSA,
+                Data: key.to_bytes().to_vec(),
+            },
         }
     }
 }
@@ -121,6 +132,7 @@ pub enum KeyType {
     RSA,
     Secp256k1,
     Ecdsa,
+    Fndsa,
 }
 
 impl std::fmt::Display for KeyType {
@@ -130,6 +142,7 @@ impl std::fmt::Display for KeyType {
             KeyType::RSA => f.write_str("RSA"),
             KeyType::Secp256k1 => f.write_str("Secp256k1"),
             KeyType::Ecdsa => f.write_str("Ecdsa"),
+            KeyType::Fndsa => f.write_str("Fndsa"),
         }
     }
 }

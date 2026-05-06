@@ -21,7 +21,11 @@
 //! Noise protocol I/O.
 
 mod framed;
+#[cfg(feature = "pq")]
+pub(crate) mod framed_pq;
 pub(crate) mod handshake;
+#[cfg(feature = "pq")]
+pub(crate) mod handshake_pq;
 use std::{
     cmp::min,
     fmt, io,
@@ -38,11 +42,26 @@ use futures::{prelude::*, ready};
 ///
 /// `T` is the type of the underlying I/O resource.
 pub struct Output<T> {
-    io: Framed<T, Codec<snow::TransportState>>,
+    io: OutputIo<T>,
     recv_buffer: Bytes,
     recv_offset: usize,
     send_buffer: Vec<u8>,
     send_offset: usize,
+}
+
+/// Internal dispatch over the active Noise codec. The classic XX codec drives
+/// `snow`; the post-quantum `pqXX` codec drives `clatter`. Both produce a
+/// `Framed<T, _>` exposing identical [`Stream`] / [`Sink`] interfaces, so the
+/// outer [`Output`] just dispatches per arm without further generics.
+///
+/// Both variants are boxed: their inner buffers differ substantially in size
+/// (the PQ codec needs more headroom for ML-KEM material), and we don't want
+/// either path to pay an in-place stack penalty for the other. There is one
+/// `Output<T>` per connection so the extra allocation is amortized away.
+enum OutputIo<T> {
+    Classic(Box<Framed<T, Codec<snow::TransportState>>>),
+    #[cfg(feature = "pq")]
+    Pq(Box<Framed<T, framed_pq::PqCodec<framed_pq::PqTransportSession>>>),
 }
 
 impl<T> fmt::Debug for Output<T> {
@@ -52,9 +71,22 @@ impl<T> fmt::Debug for Output<T> {
 }
 
 impl<T> Output<T> {
-    fn new(io: Framed<T, Codec<snow::TransportState>>) -> Self {
+    pub(crate) fn new(io: Framed<T, Codec<snow::TransportState>>) -> Self {
         Output {
-            io,
+            io: OutputIo::Classic(Box::new(io)),
+            recv_buffer: Bytes::new(),
+            recv_offset: 0,
+            send_buffer: Vec::new(),
+            send_offset: 0,
+        }
+    }
+
+    #[cfg(feature = "pq")]
+    pub(crate) fn new_pq(
+        io: Framed<T, framed_pq::PqCodec<framed_pq::PqTransportSession>>,
+    ) -> Self {
+        Output {
+            io: OutputIo::Pq(Box::new(io)),
             recv_buffer: Bytes::new(),
             recv_offset: 0,
             send_buffer: Vec::new(),
@@ -86,7 +118,12 @@ impl<T: AsyncRead + Unpin> AsyncRead for Output<T> {
                 return Poll::Ready(Ok(n));
             }
 
-            match Pin::new(&mut self.io).poll_next(cx) {
+            let next = match &mut self.io {
+                OutputIo::Classic(io) => Pin::new(io).poll_next(cx),
+                #[cfg(feature = "pq")]
+                OutputIo::Pq(io) => Pin::new(io).poll_next(cx),
+            };
+            match next {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(None) => return Poll::Ready(Ok(0)),
                 Poll::Ready(Some(Err(e))) => return Poll::Ready(Err(e)),
@@ -106,14 +143,23 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for Output<T> {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = Pin::into_inner(self);
-        let mut io = Pin::new(&mut this.io);
-        let frame_buf = &mut this.send_buffer;
 
         // The MAX_FRAME_LEN is the maximum buffer size before a frame must be sent.
         if this.send_offset == MAX_FRAME_LEN {
             tracing::trace!(bytes=%MAX_FRAME_LEN, "write: sending");
-            ready!(io.as_mut().poll_ready(cx))?;
-            io.as_mut().start_send(frame_buf)?;
+            match &mut this.io {
+                OutputIo::Classic(io) => {
+                    let mut io = Pin::new(io);
+                    ready!(io.as_mut().poll_ready(cx))?;
+                    io.as_mut().start_send(&this.send_buffer[..])?;
+                }
+                #[cfg(feature = "pq")]
+                OutputIo::Pq(io) => {
+                    let mut io = Pin::new(io);
+                    ready!(io.as_mut().poll_ready(cx))?;
+                    io.as_mut().start_send(&this.send_buffer[..])?;
+                }
+            }
             this.send_offset = 0;
         }
 
@@ -130,22 +176,39 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for Output<T> {
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let this = Pin::into_inner(self);
-        let mut io = Pin::new(&mut this.io);
-        let frame_buf = &mut this.send_buffer;
 
         // Check if there is still one more frame to send.
         if this.send_offset > 0 {
-            ready!(io.as_mut().poll_ready(cx))?;
             tracing::trace!(bytes= %this.send_offset, "flush: sending");
-            io.as_mut().start_send(frame_buf)?;
+            match &mut this.io {
+                OutputIo::Classic(io) => {
+                    let mut io = Pin::new(io);
+                    ready!(io.as_mut().poll_ready(cx))?;
+                    io.as_mut().start_send(&this.send_buffer[..])?;
+                }
+                #[cfg(feature = "pq")]
+                OutputIo::Pq(io) => {
+                    let mut io = Pin::new(io);
+                    ready!(io.as_mut().poll_ready(cx))?;
+                    io.as_mut().start_send(&this.send_buffer[..])?;
+                }
+            }
             this.send_offset = 0;
         }
 
-        io.as_mut().poll_flush(cx)
+        match &mut this.io {
+            OutputIo::Classic(io) => Pin::new(io).poll_flush(cx),
+            #[cfg(feature = "pq")]
+            OutputIo::Pq(io) => Pin::new(io).poll_flush(cx),
+        }
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         ready!(self.as_mut().poll_flush(cx))?;
-        Pin::new(&mut self.io).poll_close(cx)
+        match &mut self.io {
+            OutputIo::Classic(io) => Pin::new(io).poll_close(cx),
+            #[cfg(feature = "pq")]
+            OutputIo::Pq(io) => Pin::new(io).poll_close(cx),
+        }
     }
 }

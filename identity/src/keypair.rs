@@ -22,12 +22,15 @@
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 use quick_protobuf::{BytesReader, Writer};
 
 #[cfg(feature = "ecdsa")]
 use crate::ecdsa;
+#[cfg(feature = "fndsa")]
+use crate::fndsa;
 #[cfg(any(
     feature = "ecdsa",
     feature = "secp256k1",
@@ -40,14 +43,16 @@ use crate::ed25519;
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 use crate::error::OtherVariantError;
 #[cfg(any(
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 use crate::proto;
 #[cfg(all(feature = "rsa", not(target_arch = "wasm32")))]
@@ -95,6 +100,9 @@ enum KeyPairInner {
     /// An ECDSA keypair.
     #[cfg(feature = "ecdsa")]
     Ecdsa(ecdsa::Keypair),
+    /// An FN-DSA-512 (Falcon-512) keypair. Experimental post-quantum.
+    #[cfg(feature = "fndsa")]
+    Fndsa(fndsa::Keypair),
 }
 
 impl Keypair {
@@ -122,6 +130,15 @@ impl Keypair {
         }
     }
 
+    /// Generate a new FN-DSA-512 (Falcon-512) keypair. Experimental
+    /// post-quantum. See [`crate::fndsa`] for assurance caveats.
+    #[cfg(feature = "fndsa")]
+    pub fn generate_fndsa() -> Keypair {
+        Keypair {
+            keypair: KeyPairInner::Fndsa(fndsa::Keypair::generate()),
+        }
+    }
+
     #[cfg(feature = "ed25519")]
     pub fn try_into_ed25519(self) -> Result<ed25519::Keypair, OtherVariantError> {
         self.try_into()
@@ -139,6 +156,11 @@ impl Keypair {
 
     #[cfg(feature = "ecdsa")]
     pub fn try_into_ecdsa(self) -> Result<ecdsa::Keypair, OtherVariantError> {
+        self.try_into()
+    }
+
+    #[cfg(feature = "fndsa")]
+    pub fn try_into_fndsa(self) -> Result<fndsa::Keypair, OtherVariantError> {
         self.try_into()
     }
 
@@ -186,6 +208,8 @@ impl Keypair {
             KeyPairInner::Secp256k1(ref pair) => Ok(pair.secret().sign(msg)),
             #[cfg(feature = "ecdsa")]
             KeyPairInner::Ecdsa(ref pair) => Ok(pair.secret().sign(msg)),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(ref pair) => Ok(pair.sign(msg)),
         }
     }
 
@@ -208,6 +232,10 @@ impl Keypair {
             KeyPairInner::Ecdsa(ref pair) => PublicKey {
                 publickey: PublicKeyInner::Ecdsa(pair.public().clone()),
             },
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(ref pair) => PublicKey {
+                publickey: PublicKeyInner::Fndsa(pair.public()),
+            },
         }
     }
 
@@ -217,7 +245,8 @@ impl Keypair {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         ))]
         {
             use quick_protobuf::MessageWrite;
@@ -239,6 +268,11 @@ impl Keypair {
                     Type: proto::KeyType::ECDSA,
                     Data: data.secret().encode_der(),
                 },
+                #[cfg(feature = "fndsa")]
+                KeyPairInner::Fndsa(ref data) => proto::PrivateKey {
+                    Type: proto::KeyType::FNDSA,
+                    Data: data.secret().to_bytes().to_vec(),
+                },
             };
 
             let mut buf = Vec::with_capacity(pk.get_size());
@@ -252,7 +286,8 @@ impl Keypair {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         )))]
         unreachable!()
     }
@@ -264,7 +299,8 @@ impl Keypair {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         ))]
         {
             use quick_protobuf::MessageRead;
@@ -314,6 +350,16 @@ impl Keypair {
 
                     Err(DecodingError::missing_feature("ecdsa"))
                 }
+                proto::KeyType::FNDSA => {
+                    #[cfg(feature = "fndsa")]
+                    return fndsa::SecretKey::try_from_bytes(&mut private_key.Data).map(|sk| {
+                        Keypair {
+                            keypair: KeyPairInner::Fndsa(fndsa::Keypair::from(sk)),
+                        }
+                    });
+                    #[cfg(not(feature = "fndsa"))]
+                    return Err(DecodingError::missing_feature("fndsa"));
+                }
             }
         }
 
@@ -321,7 +367,8 @@ impl Keypair {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         )))]
         unreachable!()
     }
@@ -337,13 +384,15 @@ impl Keypair {
             KeyPairInner::Secp256k1(_) => KeyType::Secp256k1,
             #[cfg(feature = "ecdsa")]
             KeyPairInner::Ecdsa(_) => KeyType::Ecdsa,
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => KeyType::Fndsa,
         }
     }
 
     /// Deterministically derive a new secret from this [`Keypair`],
     /// taking into account the provided domain.
     ///
-    /// This works for all key types except RSA where it returns `None`.
+    /// This works for all key types except RSA and FN-DSA, where it returns `None`.
     ///
     /// # Example
     ///
@@ -401,6 +450,8 @@ impl Keypair {
                     .try_into()
                     .expect("Ecdsa's private key should be 32 bytes"),
             ),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => None,
         }
     }
 }
@@ -454,6 +505,8 @@ impl TryInto<ed25519::Keypair> for Keypair {
             KeyPairInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
             #[cfg(feature = "ecdsa")]
             KeyPairInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -471,6 +524,8 @@ impl TryInto<ecdsa::Keypair> for Keypair {
             KeyPairInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
             #[cfg(feature = "secp256k1")]
             KeyPairInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -488,6 +543,8 @@ impl TryInto<secp256k1::Keypair> for Keypair {
             KeyPairInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
             #[cfg(feature = "ecdsa")]
             KeyPairInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -501,6 +558,36 @@ impl TryInto<rsa::Keypair> for Keypair {
             KeyPairInner::Rsa(inner) => Ok(inner),
             #[cfg(feature = "ed25519")]
             KeyPairInner::Ed25519(_) => Err(OtherVariantError::new(crate::KeyType::Ed25519)),
+            #[cfg(feature = "secp256k1")]
+            KeyPairInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
+            #[cfg(feature = "ecdsa")]
+            KeyPairInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            KeyPairInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
+        }
+    }
+}
+
+#[cfg(feature = "fndsa")]
+impl From<fndsa::Keypair> for Keypair {
+    fn from(kp: fndsa::Keypair) -> Self {
+        Keypair {
+            keypair: KeyPairInner::Fndsa(kp),
+        }
+    }
+}
+
+#[cfg(feature = "fndsa")]
+impl TryInto<fndsa::Keypair> for Keypair {
+    type Error = OtherVariantError;
+
+    fn try_into(self) -> Result<fndsa::Keypair, Self::Error> {
+        match self.keypair {
+            KeyPairInner::Fndsa(inner) => Ok(inner),
+            #[cfg(feature = "ed25519")]
+            KeyPairInner::Ed25519(_) => Err(OtherVariantError::new(crate::KeyType::Ed25519)),
+            #[cfg(all(feature = "rsa", not(target_arch = "wasm32")))]
+            KeyPairInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
             #[cfg(feature = "secp256k1")]
             KeyPairInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
             #[cfg(feature = "ecdsa")]
@@ -523,6 +610,9 @@ pub(crate) enum PublicKeyInner {
     /// A public ECDSA key.
     #[cfg(feature = "ecdsa")]
     Ecdsa(ecdsa::PublicKey),
+    /// A public FN-DSA-512 (Falcon-512) key. Experimental post-quantum.
+    #[cfg(feature = "fndsa")]
+    Fndsa(fndsa::PublicKey),
 }
 
 /// The public key of a node's identity keypair.
@@ -548,6 +638,8 @@ impl PublicKey {
             PublicKeyInner::Secp256k1(ref pk) => pk.verify(msg, sig),
             #[cfg(feature = "ecdsa")]
             PublicKeyInner::Ecdsa(ref pk) => pk.verify(msg, sig),
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(ref pk) => pk.verify(msg, sig),
         }
     }
 
@@ -571,6 +663,11 @@ impl PublicKey {
         self.try_into()
     }
 
+    #[cfg(feature = "fndsa")]
+    pub fn try_into_fndsa(self) -> Result<fndsa::PublicKey, OtherVariantError> {
+        self.try_into()
+    }
+
     /// Encode the public key into a protobuf structure for storage or
     /// exchange with other nodes.
     pub fn encode_protobuf(&self) -> Vec<u8> {
@@ -578,7 +675,8 @@ impl PublicKey {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         ))]
         {
             use quick_protobuf::MessageWrite;
@@ -597,7 +695,8 @@ impl PublicKey {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         )))]
         unreachable!()
     }
@@ -610,7 +709,8 @@ impl PublicKey {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         ))]
         {
             use quick_protobuf::MessageRead;
@@ -626,7 +726,8 @@ impl PublicKey {
             feature = "ecdsa",
             feature = "secp256k1",
             feature = "ed25519",
-            feature = "rsa"
+            feature = "rsa",
+            feature = "fndsa"
         )))]
         unreachable!()
     }
@@ -648,6 +749,8 @@ impl PublicKey {
             PublicKeyInner::Secp256k1(_) => KeyType::Secp256k1,
             #[cfg(feature = "ecdsa")]
             PublicKeyInner::Ecdsa(_) => KeyType::Ecdsa,
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(_) => KeyType::Fndsa,
         }
     }
 }
@@ -656,7 +759,8 @@ impl PublicKey {
     feature = "ecdsa",
     feature = "secp256k1",
     feature = "ed25519",
-    feature = "rsa"
+    feature = "rsa",
+    feature = "fndsa"
 ))]
 impl TryFrom<proto::PublicKey> for PublicKey {
     type Error = DecodingError;
@@ -708,6 +812,17 @@ impl TryFrom<proto::PublicKey> for PublicKey {
                 tracing::debug!("support for ECDSA was disabled at compile-time");
                 Err(DecodingError::missing_feature("ecdsa"))
             }
+            #[cfg(feature = "fndsa")]
+            proto::KeyType::FNDSA => Ok(fndsa::PublicKey::try_from_bytes(&pubkey.Data).map(
+                |pk| PublicKey {
+                    publickey: PublicKeyInner::Fndsa(pk),
+                },
+            )?),
+            #[cfg(not(feature = "fndsa"))]
+            proto::KeyType::FNDSA => {
+                tracing::debug!("support for FN-DSA-512 was disabled at compile-time");
+                Err(DecodingError::missing_feature("fndsa"))
+            }
         }
     }
 }
@@ -725,6 +840,8 @@ impl TryInto<ed25519::PublicKey> for PublicKey {
             PublicKeyInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
             #[cfg(feature = "ecdsa")]
             PublicKeyInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -742,6 +859,8 @@ impl TryInto<ecdsa::PublicKey> for PublicKey {
             PublicKeyInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
             #[cfg(feature = "secp256k1")]
             PublicKeyInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -759,6 +878,8 @@ impl TryInto<secp256k1::PublicKey> for PublicKey {
             PublicKeyInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
             #[cfg(feature = "ecdsa")]
             PublicKeyInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -776,6 +897,8 @@ impl TryInto<rsa::PublicKey> for PublicKey {
             PublicKeyInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
             #[cfg(feature = "ecdsa")]
             PublicKeyInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
+            #[cfg(feature = "fndsa")]
+            PublicKeyInner::Fndsa(_) => Err(OtherVariantError::new(crate::KeyType::Fndsa)),
         }
     }
 }
@@ -803,6 +926,34 @@ impl From<ecdsa::PublicKey> for PublicKey {
     fn from(key: ecdsa::PublicKey) -> Self {
         PublicKey {
             publickey: PublicKeyInner::Ecdsa(key),
+        }
+    }
+}
+
+#[cfg(feature = "fndsa")]
+impl From<fndsa::PublicKey> for PublicKey {
+    fn from(key: fndsa::PublicKey) -> Self {
+        PublicKey {
+            publickey: PublicKeyInner::Fndsa(key),
+        }
+    }
+}
+
+#[cfg(feature = "fndsa")]
+impl TryInto<fndsa::PublicKey> for PublicKey {
+    type Error = OtherVariantError;
+
+    fn try_into(self) -> Result<fndsa::PublicKey, Self::Error> {
+        match self.publickey {
+            PublicKeyInner::Fndsa(inner) => Ok(inner),
+            #[cfg(feature = "ed25519")]
+            PublicKeyInner::Ed25519(_) => Err(OtherVariantError::new(crate::KeyType::Ed25519)),
+            #[cfg(all(feature = "rsa", not(target_arch = "wasm32")))]
+            PublicKeyInner::Rsa(_) => Err(OtherVariantError::new(crate::KeyType::RSA)),
+            #[cfg(feature = "secp256k1")]
+            PublicKeyInner::Secp256k1(_) => Err(OtherVariantError::new(crate::KeyType::Secp256k1)),
+            #[cfg(feature = "ecdsa")]
+            PublicKeyInner::Ecdsa(_) => Err(OtherVariantError::new(crate::KeyType::Ecdsa)),
         }
     }
 }
@@ -847,6 +998,54 @@ mod tests {
         let pub_key = PublicKey::try_decode_protobuf(&hex_literal::hex!("0803125b3059301306072a8648ce3d020106082a8648ce3d03010703420004de3d300fa36ae0e8f5d530899d83abab44abf3161f162a4bc901d8e6ecda020e8b6d5f8da30525e71d6851510c098e5c47c646a597fb4dcec034e9f77c409e62")).unwrap();
 
         roundtrip_protobuf_encoding(&priv_key, &pub_key, KeyType::Ecdsa);
+    }
+
+    #[test]
+    #[cfg(all(feature = "fndsa", feature = "peerid"))]
+    fn keypair_protobuf_roundtrip_fndsa() {
+        // FN-DSA-512 is pre-NIST-final and the upstream library's wire format
+        // may change before the spec is published, so we don't pin a static
+        // hex test vector — we round-trip a freshly generated keypair instead.
+        let priv_key = Keypair::generate_fndsa();
+        let pub_key = priv_key.public();
+        roundtrip_protobuf_encoding(&priv_key, &pub_key, KeyType::Fndsa);
+    }
+
+    #[test]
+    #[cfg(feature = "fndsa")]
+    fn fndsa_keypair_signs_and_verifies_via_top_level_api() {
+        let kp = Keypair::generate_fndsa();
+        let pk = kp.public();
+        let msg = b"top-level Keypair sign through to fndsa::Keypair";
+        let sig = kp.sign(msg).expect("FN-DSA sign succeeds");
+        assert!(pk.verify(msg, &sig));
+    }
+
+    #[test]
+    #[cfg(feature = "fndsa")]
+    fn fndsa_key_type_dispatch() {
+        let kp = Keypair::generate_fndsa();
+        assert_eq!(kp.key_type(), KeyType::Fndsa);
+        assert_eq!(kp.public().key_type(), KeyType::Fndsa);
+        // Cross-type try_into rejects with the right discriminant.
+        #[cfg(feature = "ed25519")]
+        {
+            let err = kp.public().try_into_ed25519().unwrap_err();
+            assert_eq!(format!("{err}").contains("Fndsa"), true);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "fndsa")]
+    fn test_publickey_from_fndsa_public_key() {
+        let pubkey = Keypair::generate_fndsa().public();
+        let fndsa_pubkey = pubkey
+            .clone()
+            .try_into_fndsa()
+            .expect("An FN-DSA keypair");
+        let converted_pubkey = PublicKey::from(fndsa_pubkey);
+        assert_eq!(converted_pubkey, pubkey);
+        assert_eq!(converted_pubkey.key_type(), KeyType::Fndsa);
     }
 
     #[test]

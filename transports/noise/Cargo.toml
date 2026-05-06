@@ -8,6 +8,9 @@ authors = ["Parity Technologies <admin@parity.io>"]
 license = "MIT"
 repository = "https://github.com/libp2p/rust-libp2p"
 
+[features]
+pq = ["dep:clatter"]
+
 [dependencies]
 asynchronous-codec = { workspace = true }
 bytes.workspace = true
@@ -24,6 +27,8 @@ tracing = { workspace = true }
 x25519-dalek = "2"
 zeroize = "1"
 
+clatter = { version = "2", default-features = false, features = ["use-chacha20poly1305", "use-sha", "use-rust-crypto-ml-kem", "getrandom"], optional = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 snow = { version = "0.9.6", features = ["ring-resolver"], default-features = false }
 
@@ -34,12 +39,16 @@ snow = { version = "0.9.5", features = ["default-resolver"], default-features = 
 futures_ringbuf = "0.4.0"
 quickcheck = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-libp2p-identity = { workspace = true, features = ["rand"] }
+libp2p-identity = { workspace = true, features = ["rand", "fndsa"] }
 
 # Passing arguments to the docsrs builder in order to properly document cfg's.
 # More information: https://docs.rs/about/builds#cross-compiling
 [package.metadata.docs.rs]
 all-features = true
+
+[[example]]
+name = "pq_handshake"
+required-features = ["pq"]
 
 [lints]
 workspace = true

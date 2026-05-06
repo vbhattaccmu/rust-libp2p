@@ -1,0 +1,82 @@
+name: Post-quantum tests
+
+on:
+  pull_request:
+    paths:
+      - 'identity/**'
+      - 'transports/noise/**'
+      - 'libp2p/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pq.yml'
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+
+jobs:
+  identity-fndsa:
+    name: libp2p-identity (fndsa)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: r7kamura/rust-problem-matchers@9fe7ca9f6550e5d6358e179d451cc25ea6b54f98 #v1.5.0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          shared-key: pq-cache
+
+      # Pure-PQ-only build: confirms FN-DSA stands alone without any classical
+      # key feature pulled in. Catches accidental cross-feature dependencies.
+      - name: Pure-PQ build
+        run: cargo check -p libp2p-identity --features fndsa
+
+      # Tests with FN-DSA + every classical key type — covers protobuf
+      # round-trip across all variants and the cross-type TryInto dispatch.
+      - name: Identity tests (fndsa + classical)
+        run: cargo test -p libp2p-identity --features fndsa,peerid,ed25519,ecdsa,secp256k1,rsa,rand
+
+  noise-pq:
+    name: libp2p-noise (pq)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: r7kamura/rust-problem-matchers@9fe7ca9f6550e5d6358e179d451cc25ea6b54f98 #v1.5.0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          shared-key: pq-cache
+
+      # Default-feature regression: classic /noise behavior must be unchanged
+      # by the PQ feature being available.
+      - name: Default-feature regression
+        run: cargo test -p libp2p-noise
+
+      # Full PQ Noise test suite, including the FN-DSA-identity integration test.
+      - name: PQ Noise tests
+        run: cargo test -p libp2p-noise --features pq
+
+      # End-to-end example: two in-memory peers complete a pqXX handshake and
+      # round-trip an encrypted message. Belt-and-suspenders versus the test
+      # suite — catches anything the integration tests miss.
+      - name: PQ Noise example
+        run: cargo run --example pq_handshake -p libp2p-noise --features pq
+
+      # Clippy gate scoped to the noise crate's own code (not deps). The
+      # existing ci.yml does not run clippy at all, so this is value-add.
+      - name: Clippy (PQ paths)
+        run: cargo clippy -p libp2p-noise --features pq --no-deps --tests -- -D warnings
