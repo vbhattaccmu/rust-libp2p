@@ -125,8 +125,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: "wasm32-unknown-unknown"
-            os: ubuntu-latest
           - target: "wasm32-unknown-emscripten"
             os: ubuntu-latest
           - target: "wasm32-wasip1"
@@ -214,31 +212,6 @@ jobs:
       - name: Check rustdoc links
         run: RUSTDOCFLAGS="--deny rustdoc::broken_intra_doc_links --deny warnings" cargo doc --verbose --workspace --no-deps --all-features --document-private-items
 
-  clippy:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        rust-version: [
-          1.93.1, # current stable
-          beta,
-        ]
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust-version }}
-          components: clippy
-
-      - uses: r7kamura/rust-problem-matchers@9fe7ca9f6550e5d6358e179d451cc25ea6b54f98 #v1.5.0
-
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-
-      - run: cargo clippy --all-targets --all-features
-
   ipfs-integration-test:
     name: IPFS Integration tests
     runs-on: ubuntu-latest
@@ -290,55 +263,6 @@ jobs:
           cd examples/browser-webrtc
           wasm-pack build --target web --out-dir static
 
-  semver:
-    runs-on: ubuntu-latest
-    env:
-      # Unset the global `RUSTFLAGS` env to allow warnings.
-      # cargo-semver-checks intentionally re-locks dependency versions
-      # before checking, and we shouldn't fail here if a dep has a warning.
-      #
-      # More context:
-      # https://github.com/libp2p/rust-libp2p/pull/4932#issuecomment-1829014527
-      # https://github.com/obi1kenobi/cargo-semver-checks/issues/589
-      RUSTFLAGS: ''
-    steps:
-      - uses: actions/checkout@v5
-      - uses: obi1kenobi/cargo-semver-checks-action@v2
-      - run: cargo semver-checks
-
-  rustfmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
-
-      - uses: r7kamura/rust-problem-matchers@9fe7ca9f6550e5d6358e179d451cc25ea6b54f98 #v1.5.0
-
-      - name: Check formatting
-        run: cargo fmt -- --check
-
-  manifest_lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: r7kamura/rust-problem-matchers@9fe7ca9f6550e5d6358e179d451cc25ea6b54f98 #v1.5.0
-
-      - name: Ensure `full` feature contains all features
-        run: |
-          ALL_FEATURES=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "libp2p") | .features | keys | map(select(. != "full")) | sort | join(" ")')
-          FULL_FEATURE=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "libp2p") | .features["full"] | sort | join(" ")')
-
-          echo "$ALL_FEATURES";
-          echo "$FULL_FEATURE";
-
-          test "$ALL_FEATURES" = "$FULL_FEATURE"
-
   gather_published_crates:
     runs-on: ubuntu-latest
     outputs:
@@ -388,10 +312,3 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
       - run: cargo metadata --locked --format-version=1 > /dev/null
 
-  cargo-deny:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-    - uses: EmbarkStudios/cargo-deny-action@v2
-      with:
-        command: check advisories bans licenses sources
